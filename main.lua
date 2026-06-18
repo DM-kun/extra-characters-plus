@@ -709,9 +709,9 @@ extraCharacters = {
                 [GLOVES] = 'FFFFFF',
                 [SHOES]  = 'FE4D7F',
                 [HAIR]   = 'FF0000',
-                [SKIN]   = 'FEC179',
+                [SKIN]   = '942245',
                 [CAP]    = 'FE4D7F',
-                [EMBLEM] = 'FF0000'
+                [EMBLEM] = '942245'
             },
             {
                 name     = "Retro",
@@ -720,7 +720,7 @@ extraCharacters = {
                 [GLOVES] = 'FFFFFF',
                 [SHOES]  = 'c82777',
                 [HAIR]   = '6b1240',
-                [SKIN]   = 'c82777',
+                [SKIN]   = '6b1240',
                 [CAP]    = 'c82777',
                 [EMBLEM] = '6b1240'
             },
@@ -731,9 +731,9 @@ extraCharacters = {
                 [GLOVES] = 'FFFFFF',
                 [SHOES]  = 'A4E784',
                 [HAIR]   = 'C91812',
-                [SKIN]   = 'E88FFF',
+                [SKIN]   = '2f753d',
                 [CAP]    = 'A4E784',
-                [EMBLEM] = '72FFFF'
+                [EMBLEM] = '2f753d'
             },
             {
                 name     = "Red",
@@ -741,10 +741,10 @@ extraCharacters = {
                 [SHIRT]  = 'eb1905',
                 [GLOVES] = 'FFFFFF',
                 [SHOES]  = '5b1905',
-                [HAIR]   = 'c91812',
-                [SKIN]   = 'e88fff',
+                [HAIR]   = '5b1905',
+                [SKIN]   = '8c0331',
                 [CAP]    = 'eb1905',
-                [EMBLEM] = '72ffff'
+                [EMBLEM] = '8c0331'
             },
             {
                 name     = "Grey",
@@ -752,10 +752,10 @@ extraCharacters = {
                 [SHIRT]  = '646464',
                 [GLOVES] = 'FFFFFF',
                 [SHOES]  = '646464',
-                [HAIR]   = '468BCC',
-                [SKIN]   = '646464',
+                [HAIR]   = '2e2e2e',
+                [SKIN]   = '2e2e2e',
                 [CAP]    = '646464',
-                [EMBLEM] = '646464'
+                [EMBLEM] = '2e2e2e'
             },
         },
         voices = {
