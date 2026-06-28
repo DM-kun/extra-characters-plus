@@ -40,7 +40,10 @@
 --- @class PaulineState
 
 --- @class RosalinaState
+--- @field public health integer
+--- @field public extraHealth boolean
 --- @field public canSpin boolean
+--- @field public onTarget boolean
 --- @field public orbitObjActive boolean
 --- @field public orbitObjDist number
 --- @field public orbitObjAngle integer

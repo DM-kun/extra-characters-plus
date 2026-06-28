@@ -1,7 +1,15 @@
 require "anims/rosalina"
 
-_G.ACT_JUMP_TWIRL = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ATTACKING)
-E_MODEL_TWIRL_EFFECT = smlua_model_util_get_id("spin_attack_geo")
+local E_MODEL_TWIRL_EFFECT = smlua_model_util_get_id("spin_attack_geo")
+
+-- Rosalina actions
+_G.ACT_JUMP_TWIRL       = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ATTACKING)
+_G.ACT_TWIRL_POUND      = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AIR | ACT_FLAG_ATTACKING | ACT_FLAG_ALLOW_VERTICAL_WIND_ACTION)
+_G.ACT_TWIRL_POUND_LAND = allocate_mario_action(ACT_GROUP_STATIONARY | ACT_FLAG_STATIONARY | ACT_FLAG_ATTACKING)
+
+-- Rosalina sounds
+local ROSALINA_SOUND_SPIN = audio_sample_load("z_sfx_rosalina_spinattack.ogg")
+local ROSALINA_SOUND_HOMING_SPIN = audio_sample_load("z_sfx_rosalina_homing_spinattack.ogg")
 
 ---@param o Object
 local function bhv_spin_attack_init(o)
@@ -10,7 +18,6 @@ end
 
 ---@param o Object
 local function bhv_spin_attack_loop(o)
-
     -- Retrieves the Mario state corresponding to its global index
     local m = gMarioStates[network_local_index_from_global(o.globalPlayerIndex)]
     if m == nil or m.marioObj == nil then
@@ -45,14 +52,16 @@ local spinOverrides = T{
     ACT_DIVE
 }
 
-local ROSALINA_SOUND_SPIN = audio_sample_load("z_sfx_rosalina_spinattack.ogg") -- Load audio sample
-
 ---@param m MarioState
 function act_jump_twirl(m)
     local e = gCharacterStates[m.playerIndex].rosalina
 
     if m.actionTimer >= 15 then
         return set_mario_action(m, ACT_FREEFALL, 0) -- End the action
+    end
+
+    if m.input & INPUT_Z_PRESSED ~= 0 and m.vel.y > 0 then
+        return set_mario_action(m, ACT_TWIRL_POUND, 0)
     end
 
     if m.actionTimer == 0 then
@@ -88,6 +97,90 @@ function act_jump_twirl(m)
 end
 
 ---@param m MarioState
+function act_twirl_pound(m)
+    if m.actionState == 0 then
+        m.vel.y = -100 -- Initial downward velocity
+        mario_set_forward_vel(m, 0)
+
+        if m.actionTimer == 0 then
+            set_mario_animation(m, CHAR_ANIM_START_GROUND_POUND)
+            audio_sample_play(ROSALINA_SOUND_HOMING_SPIN, m.pos, 1)
+            m.particleFlags = m.particleFlags | ACTIVE_PARTICLE_SPARKLES
+        end
+
+        m.marioBodyState.handState = MARIO_HAND_PEACE_SIGN
+
+        -- look for target (W.I.P.)
+
+        m.actionTimer = m.actionTimer + 1
+        if m.actionTimer >= (m.marioObj.header.gfx.animInfo.curAnim.loopEnd + 4) then
+            play_character_sound(m, CHAR_SOUND_GROUND_POUND_WAH)
+            m.marioObj.hitboxRadius = 60
+            m.actionState = 1
+        end
+    else
+        local e = gCharacterStates[m.playerIndex].rosalina
+
+        set_mario_animation(m, CHAR_ANIM_TRIPLE_JUMP_LAND)
+        set_anim_to_frame(m, 14)
+
+        m.marioBodyState.handState = MARIO_HAND_OPEN
+
+        -- one last target check before going down (W.I.P.)
+        if not e.onTarget then
+            e.onTarget = true
+        end
+
+        local stepResult = perform_air_step(m, 0)
+
+        m.vel.y = m.vel.y * 1.15 -- faster fall
+
+        if stepResult == AIR_STEP_LANDED then
+            if should_get_stuck_in_ground(m) ~= 0 then
+                queue_rumble_data_mario(m, 5, 80)
+                play_character_sound(m, CHAR_SOUND_OOOF2)
+                m.particleFlags = m.particleFlags | PARTICLE_MIST_CIRCLE
+                set_mario_action(m, ACT_BUTT_STUCK_IN_GROUND, 0)
+            else
+                play_mario_heavy_landing_sound(m, SOUND_ACTION_TERRAIN_HEAVY_LANDING)
+                if check_fall_damage(m, ACT_HARD_BACKWARD_GROUND_KB) == 0 then
+                    m.particleFlags = m.particleFlags | PARTICLE_MIST_CIRCLE | PARTICLE_HORIZONTAL_STAR
+                    set_mario_action(m, ACT_TWIRL_POUND_LAND, 0)
+                end
+            end
+            e.onTarget = false
+            set_camera_shake_from_hit(SHAKE_GROUND_POUND)
+        elseif stepResult == AIR_STEP_HIT_WALL then
+            mario_set_forward_vel(m, -16)
+            if m.vel.y > 0 then m.vel.y = 0 end
+
+            e.onTarget = false
+            m.particleFlags = m.particleFlags | PARTICLE_VERTICAL_STAR
+            set_mario_action(m, ACT_BACKWARD_AIR_KB, 0)
+        end
+    end
+end
+
+---@param m MarioState
+function act_twirl_pound_land(m)
+    m.actionState = 1
+
+    if m.input & INPUT_UNKNOWN_10 ~= 0 then
+        return drop_and_set_mario_action(m, ACT_SHOCKWAVE_BOUNCE, 0);
+    end
+
+    if m.input & INPUT_OFF_FLOOR ~= 0 then
+        return set_mario_action(m, ACT_FREEFALL, 0)
+    end
+
+    if m.input & INPUT_ABOVE_SLIDE ~= 0 then
+        return set_mario_action(m, ACT_BUTT_SLIDE, 0)
+    end
+
+    landing_step(m, CHAR_ANIM_TRIPLE_JUMP_LAND, ACT_TRIPLE_JUMP_LAND_STOP)
+end
+
+---@param m MarioState
 ---@param o Object
 ---@param intType InteractionType
 function rosalina_allow_interact(m, o, intType)
@@ -110,6 +203,44 @@ function rosalina_allow_interact(m, o, intType)
     end
 end
 
+--[[function rosalina_on_interact(m, o, intType, intValue)
+    if m.playerIndex ~= 0 then return end
+
+    local e = gCharacterStates[m.playerIndex].rosalina
+    e.extraHealth = true
+    e.health = 6
+
+    m.hurtCounter = 0
+    m.healCounter = 0
+end]]--
+
+local function update_rosalina_health(m, e)
+    if m.playerIndex ~= 0 then return end
+
+    if m.hurtCounter > 0 then
+        m.hurtCounter = 0
+        e.health = e.health - 1
+        if e.extraHealth and e.health < 4 then
+            e.extraHealth = false
+        end
+    end
+
+    if m.healCounter > 0 then
+        m.healCounter = 0
+        e.health = e.health + 1
+    end
+
+    local maxHealth = e.extraHealth and 6 or 3
+    if e.health >= maxHealth then
+        e.health = maxHealth
+        m.health = 0x880
+    elseif e.health == 1 then
+        m.health = 0x200
+    else
+        m.health = e.health > 0 and 0x700 or 0xFF
+    end
+end
+
 ---@param m MarioState
 function rosalina_update(m)
     local e = gCharacterStates[m.playerIndex].rosalina
@@ -122,9 +253,16 @@ function rosalina_update(m)
     --    e.canSpin = true
     --end
 
-    if m.action ~= ACT_JUMP_TWIRL and m.marioObj.hitboxRadius ~= 37 then
+    if m.action ~= ACT_JUMP_TWIRL and m.action ~= ACT_TWIRL_POUND and m.marioObj.hitboxRadius ~= 37 then
         m.marioObj.hitboxRadius = 37
     end
+
+    -- make her floatier
+    if m.vel.y < 0 and m.action & ACT_FLAG_AIR ~= 0 and m.action ~= ACT_SHOT_FROM_CANNON then
+        m.vel.y = m.vel.y + 0.9
+    end
+
+    update_rosalina_health(m, e)
 
     if e.orbitObjActive then
         local o = m.usedObj
@@ -196,11 +334,83 @@ function rosalina_before_action(m, action)
     end
 end
 
+function rosalina_before_phys_step(m)
+    local hScale = 1.0
+
+    -- slower ground movement
+    if (m.action & ACT_FLAG_MOVING) ~= 0 then
+        hScale = hScale * 0.95
+    end
+
+    m.vel.x = m.vel.x * hScale
+    m.vel.z = m.vel.z * hScale
+end
+
+------------------
+-- Rosalina HUD --
+------------------
+
+local rosalinaVanillaMeter = load_meter("rosalina")
+rosalinaVanillaMeter.pie = load_textures("char_select_custom_meter_pie", 1, 8)
+
+local rosalinaCustomMeter = load_meter("rosalina")
+rosalinaCustomMeter.pie = load_textures("char-select-ec-rosalina-meter-pie-", 1, 7)
+
+function rosalina_health_meter(localIndex, health, prevX, prevY, prevScaleW, prevScaleH, x, y, scaleW, scaleH)
+    local m = gMarioStates[localIndex]
+    local p = gPlayerSyncTable[localIndex]
+    local prevScaleW = prevScaleW/64
+    local prevScaleH = prevScaleH/64
+    local scaleW = scaleW/64
+    local scaleH = scaleH/64
+
+    local tex = rosalinaVanillaMeter.label.left
+    djui_hud_render_texture_interpolated(tex, prevX, prevY, prevScaleW, prevScaleH, x, y, scaleW, scaleH)
+    tex = rosalinaVanillaMeter.label.right
+    djui_hud_render_texture_interpolated(tex, prevX + 31*prevScaleW, prevY, prevScaleW, prevScaleH, x + 31*scaleW, y, scaleW, scaleH)
+
+    if gCSPlayers[m.playerIndex].movesetToggle then
+        local djuiFont = djui_hud_get_font()
+        local djuiColor = djui_hud_get_color()
+        djui_hud_set_font(FONT_RECOLOR_HUD)
+
+        health = gCharacterStates[m.playerIndex].rosalina.health
+
+        tex = rosalinaCustomMeter.pie[health + 1] ~= nil and rosalinaCustomMeter.pie[health + 1] or rosalinaVanillaMeter.pie[health + 1]
+        djui_hud_render_texture_interpolated(tex, prevX + 15*prevScaleW, prevY + 16*scaleH, prevScaleW, prevScaleH, x + 15*scaleW, y + 16*scaleH, scaleW, scaleH)
+
+        djui_hud_set_color(255 * djuiColor.r/255, 255 * djuiColor.g/255, 0, djuiColor.a)
+        local healthText = tostring(health)
+        local hx = (31 - djui_hud_measure_text(healthText)*0.5)*prevScaleW
+        local hy = 21*prevScaleH
+        if health > 3 then
+            hx = hx - 2
+            hy = hy - 2
+        end
+        djui_hud_print_text_interpolated(healthText, prevX + hx, prevY + hy, prevScaleH*0.75, x + hx, y + hy, prevScaleH*0.75)
+
+        -- Clean up after we're done
+        djui_hud_set_font(djuiFont)
+        djui_hud_set_color(djuiColor.r, djuiColor.g, djuiColor.b, djuiColor.a)
+    else
+        health = health >> 8
+        if health > 0 then
+            tex = rosalinaVanillaMeter.pie[health]
+            djui_hud_render_texture_interpolated(tex, prevX + 15*prevScaleW, prevY + 16*scaleH, prevScaleW, prevScaleH, x + 15*scaleW, y + 16*scaleH, scaleW, scaleH)
+        end
+    end
+end
+
 hook_mario_action(ACT_JUMP_TWIRL, act_jump_twirl, INT_KICK)
+hook_mario_action(ACT_TWIRL_POUND, act_twirl_pound, INT_GROUND_POUND)
+hook_mario_action(ACT_TWIRL_POUND_LAND, act_twirl_pound_land, INT_GROUND_POUND_OR_TWIRL)
 
 return {
     { HOOK_MARIO_UPDATE, rosalina_update },
  -- { HOOK_ON_PVP_ATTACK, rosalina_on_pvp_attack },
     { HOOK_ALLOW_INTERACT, rosalina_allow_interact },
-    { HOOK_BEFORE_SET_MARIO_ACTION, rosalina_before_action }
+ -- { HOOK_ON_INTERACT, rosalina_on_interact },
+    { HOOK_BEFORE_SET_MARIO_ACTION, rosalina_before_action },
+    { HOOK_BEFORE_PHYS_STEP, rosalina_before_phys_step },
+    meter = rosalina_health_meter
 }
