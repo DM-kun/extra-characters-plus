@@ -43,7 +43,6 @@ for i = 0, (MAX_PLAYERS - 1) do
             health = 3,
             extraHealth = true,
             canSpin = true,
-            onTarget = false,
             orbitObjActive = false,
             orbitObjDist = 0,
             orbitObjAngle = 0

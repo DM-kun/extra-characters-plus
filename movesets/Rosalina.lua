@@ -8,7 +8,7 @@ _G.ACT_TWIRL_POUND      = allocate_mario_action(ACT_GROUP_AIRBORNE | ACT_FLAG_AI
 _G.ACT_TWIRL_POUND_LAND = allocate_mario_action(ACT_GROUP_STATIONARY | ACT_FLAG_STATIONARY | ACT_FLAG_ATTACKING)
 
 -- Rosalina sounds
-local ROSALINA_SOUND_SPIN = audio_sample_load("z_sfx_rosalina_spinattack.ogg")
+local ROSALINA_SOUND_SPIN        = audio_sample_load("z_sfx_rosalina_spinattack.ogg")
 local ROSALINA_SOUND_HOMING_SPIN = audio_sample_load("z_sfx_rosalina_homing_spinattack.ogg")
 
 ---@param o Object
@@ -96,6 +96,44 @@ function act_jump_twirl(m)
     m.actionTimer = m.actionTimer + 1
 end
 
+local function rosalina_is_obj_targetable(obj)
+    return (obj_is_exclamation_box(obj) or obj_is_bully(obj) or obj_is_attackable(obj)) and obj_is_valid_for_interaction(obj)
+end
+
+local rosalinaHomingLists = {
+    OBJ_LIST_DEFAULT,
+    OBJ_LIST_LEVEL,
+    OBJ_LIST_SURFACE,
+    OBJ_LIST_PUSHABLE,
+    OBJ_LIST_GENACTOR,
+    OBJ_LIST_DESTRUCTIVE,
+}
+
+--- @param m MarioState
+--- @param distmax number
+--- @return Object
+--- Finds the closest target to MarioState `m` within the `distmax` units
+local function rosalina_find_homing_target(m, distmax)
+    local target
+    local distmin = distmax
+    local pos = gVec3fZero()
+    vec3f_copy(pos, m.pos)
+    for _, objList in pairs(rosalinaHomingLists) do
+        local obj = obj_get_first(objList)
+        while obj do
+            if rosalina_is_obj_targetable(obj) then
+                local distToObj = math.sqrt((pos.x - obj.oPosX)^2 + (pos.y - obj.oPosY)^2 + (pos.z - obj.oPosZ)^2) - (m.marioObj.hitboxRadius + obj.hitboxRadius)
+                if distToObj < distmin then
+                    distmin = distToObj
+                    target = obj
+                end
+            end
+            obj = obj_get_next(obj)
+        end
+    end
+    return target
+end
+
 ---@param m MarioState
 function act_twirl_pound(m)
     if m.actionState == 0 then
@@ -110,8 +148,6 @@ function act_twirl_pound(m)
 
         m.marioBodyState.handState = MARIO_HAND_PEACE_SIGN
 
-        -- look for target (W.I.P.)
-
         m.actionTimer = m.actionTimer + 1
         if m.actionTimer >= (m.marioObj.header.gfx.animInfo.curAnim.loopEnd + 4) then
             play_character_sound(m, CHAR_SOUND_GROUND_POUND_WAH)
@@ -119,21 +155,32 @@ function act_twirl_pound(m)
             m.actionState = 1
         end
     else
-        local e = gCharacterStates[m.playerIndex].rosalina
+        local o = rosalina_find_homing_target(m, 700)
+        local dist = dist_between_objects(m.marioObj, o)
+        local yaw, pitch
 
         set_mario_animation(m, CHAR_ANIM_TRIPLE_JUMP_LAND)
         set_anim_to_frame(m, 14)
 
         m.marioBodyState.handState = MARIO_HAND_OPEN
 
-        -- one last target check before going down (W.I.P.)
-        if not e.onTarget then
-            e.onTarget = true
-        end
-
         local stepResult = perform_air_step(m, 0)
 
         m.vel.y = m.vel.y * 1.15 -- faster fall
+
+        if o ~= nil and dist < 1000 then
+            yaw = obj_angle_to_object(m.marioObj, o)
+            if o.collisionData then
+                pitch = sonic_pitch_to_object(m, o) + degrees_to_sm64(5)
+            else
+                pitch = sonic_pitch_to_object(m, o) - degrees_to_sm64(3)
+            end
+
+            m.forwardVel = math.clamp(80, m.vel.y + 20, 150)
+
+            m.vel.x = math.abs(m.forwardVel) * sins(yaw) * coss(pitch)
+            m.vel.z = math.abs(m.forwardVel) * coss(yaw) * coss(pitch)
+        end
 
         if stepResult == AIR_STEP_LANDED then
             if should_get_stuck_in_ground(m) ~= 0 then
@@ -148,13 +195,11 @@ function act_twirl_pound(m)
                     set_mario_action(m, ACT_TWIRL_POUND_LAND, 0)
                 end
             end
-            e.onTarget = false
             set_camera_shake_from_hit(SHAKE_GROUND_POUND)
         elseif stepResult == AIR_STEP_HIT_WALL then
             mario_set_forward_vel(m, -16)
             if m.vel.y > 0 then m.vel.y = 0 end
 
-            e.onTarget = false
             m.particleFlags = m.particleFlags | PARTICLE_VERTICAL_STAR
             set_mario_action(m, ACT_BACKWARD_AIR_KB, 0)
         end
